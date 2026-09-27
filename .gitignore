@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.sites-runtime/
+*.local
+.env
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+README.md
