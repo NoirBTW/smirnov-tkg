@@ -10,6 +10,7 @@ describe('GrayBit-7 codec', () => {
       height: 1,
       colorDepth: 32,
       hasMask: true,
+      channelMode: 'rgba',
       pixels: new Uint8ClampedArray([255, 255, 255, 255, 0, 0, 0, 0]),
     }
 

@@ -1,19 +1,41 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Check, ChevronDown, Download, FileImage, FolderOpen, ImageIcon,
-  Info, Maximize2, Minus, Plus, RotateCcw, X,
+  Check, ChevronDown, Download, Eye, EyeOff, FileImage, FolderOpen,
+  ImageIcon, Info, Layers3, Maximize2, Minus, Pipette, Plus, RotateCcw, X,
 } from 'lucide-react'
 import { decodeBrowserImage } from './lib/browser-image'
+import {
+  applyChannelVisibility, createChannelPreview, DEFAULT_CHANNELS,
+  rgbToLab, visibleChannels, type ChannelKey, type ChannelState, type LabColor,
+} from './lib/color'
 import { decodeGb7, encodeGb7, type ImageDocument } from './lib/gb7'
 
 type ExportFormat = 'png' | 'jpg' | 'gb7'
 type Notice = { kind: 'error' | 'success'; text: string }
+type Tool = 'none' | 'pipette'
+type PixelSample = {
+  x: number
+  y: number
+  red: number
+  green: number
+  blue: number
+  alpha: number
+  lab: LabColor
+}
 
 const samples = [
   ['gradient-half-mask.gb7', 'Градиент 32 × 32'],
   ['vertical-kapibara.gb7', 'Капибара 1080 × 1920'],
   ['kapibara-mask.gb7', 'Капибара с маской 1200 × 1010'],
 ] as const
+
+const channelLabels: Record<ChannelKey, { short: string; name: string }> = {
+  gray: { short: 'Y', name: 'Яркость' },
+  red: { short: 'R', name: 'Красный' },
+  green: { short: 'G', name: 'Зелёный' },
+  blue: { short: 'B', name: 'Синий' },
+  alpha: { short: 'A', name: 'Альфа' },
+}
 
 function extension(name: string) {
   return name.split('.').pop()?.toLowerCase() ?? ''
@@ -29,6 +51,22 @@ function baseName(name: string) {
   return name.replace(/\.[^.]+$/, '') || 'image'
 }
 
+function ChannelThumbnail({ document, channel }: { document: ImageDocument; channel: ChannelKey }) {
+  const ref = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const canvas = ref.current
+    if (!canvas) return
+    const width = 72
+    const height = 48
+    canvas.width = width
+    canvas.height = height
+    canvas.getContext('2d')?.putImageData(createChannelPreview(document, channel, width, height), 0, 0)
+  }, [channel, document])
+
+  return <canvas ref={ref} className="channel-thumbnail" aria-hidden="true" />
+}
+
 function App() {
   const [document, setDocument] = useState<ImageDocument | null>(null)
   const [sourceSize, setSourceSize] = useState(0)
@@ -39,9 +77,20 @@ function App() {
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [sampleOpen, setSampleOpen] = useState(false)
+  const [channels, setChannels] = useState<ChannelState>({ ...DEFAULT_CHANNELS })
+  const [tool, setTool] = useState<Tool>('none')
+  const [pixelSample, setPixelSample] = useState<PixelSample | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
+
+  const displayedPixels = useMemo(
+    () => document ? applyChannelVisibility(document, channels) : null,
+    [channels, document],
+  )
+
+  const activeChannels = document ? visibleChannels(document) : []
+  const enabledChannelCount = activeChannels.filter((channel) => channels[channel]).length
 
   const fitImage = useCallback(() => {
     if (!document || !viewportRef.current) return
@@ -52,14 +101,14 @@ function App() {
   }, [document])
 
   useEffect(() => {
-    if (!document || !canvasRef.current) return
+    if (!document || !displayedPixels || !canvasRef.current) return
     const canvas = canvasRef.current
     canvas.width = document.width
     canvas.height = document.height
     canvas.getContext('2d')?.putImageData(
-      new ImageData(new Uint8ClampedArray(document.pixels), document.width, document.height), 0, 0,
+      new ImageData(new Uint8ClampedArray(displayedPixels), document.width, document.height), 0, 0,
     )
-  }, [document])
+  }, [displayedPixels, document])
 
   useEffect(() => {
     if (!fitMode) return
@@ -89,6 +138,9 @@ function App() {
       setDocument(decoded)
       setSourceSize(file.size)
       setFormat(ext === 'jpg' || ext === 'jpeg' ? 'jpg' : ext as ExportFormat)
+      setChannels({ ...DEFAULT_CHANNELS })
+      setPixelSample(null)
+      setTool('none')
       setFitMode(true)
       setNotice({ kind: 'success', text: `${file.name} загружен` })
     } catch (error) {
@@ -148,9 +200,37 @@ function App() {
     setZoom(Math.min(4, Math.max(0.05, next)))
   }
 
+  const toggleChannel = (channel: ChannelKey) => {
+    setChannels((current) => ({ ...current, [channel]: !current[channel] }))
+  }
+
+  const samplePixel = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    if (tool !== 'pipette' || !document || event.button !== 0) return
+    const canvas = event.currentTarget
+    const rect = canvas.getBoundingClientRect()
+    const x = Math.min(document.width - 1, Math.max(0, Math.floor((event.clientX - rect.left) * canvas.width / rect.width)))
+    const y = Math.min(document.height - 1, Math.max(0, Math.floor((event.clientY - rect.top) * canvas.height / rect.height)))
+    const offset = (y * document.width + x) * 4
+    const red = document.pixels[offset]
+    const green = document.pixels[offset + 1]
+    const blue = document.pixels[offset + 2]
+    setPixelSample({
+      x,
+      y,
+      red,
+      green,
+      blue,
+      alpha: document.pixels[offset + 3],
+      lab: rgbToLab(red, green, blue),
+    })
+  }
+
   const reset = () => {
     setDocument(null)
     setSourceSize(0)
+    setPixelSample(null)
+    setTool('none')
+    setChannels({ ...DEFAULT_CHANNELS })
     setNotice(null)
   }
 
@@ -205,7 +285,18 @@ function App() {
               <span>{document?.name ?? 'Новый документ'}</span>
               {document && <span className="format-pill">{document.format}</span>}
             </div>
-            {document && <button className="icon-button" onClick={reset} title="Закрыть изображение" aria-label="Закрыть изображение"><X size={17} /></button>}
+            <div className="document-tools">
+              <button
+                className={`tool-button ${tool === 'pipette' ? 'active' : ''}`}
+                onClick={() => setTool((current) => current === 'pipette' ? 'none' : 'pipette')}
+                disabled={!document}
+                aria-pressed={tool === 'pipette'}
+                title="Пипетка — считать цвет пикселя"
+              >
+                <Pipette size={16} /> <span>Пипетка</span>
+              </button>
+              {document && <button className="icon-button" onClick={reset} title="Закрыть изображение" aria-label="Закрыть изображение"><X size={17} /></button>}
+            </div>
           </div>
 
           <div
@@ -213,7 +304,9 @@ function App() {
             ref={viewportRef}
             onDragEnter={(event) => { event.preventDefault(); setDragging(true) }}
             onDragOver={(event) => event.preventDefault()}
-            onDragLeave={(event) => { if (event.currentTarget === event.target) setDragging(false) }}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false)
+            }}
             onDrop={(event) => {
               event.preventDefault()
               setDragging(false)
@@ -224,9 +317,21 @@ function App() {
               <div className="canvas-stage" style={{ width: document.width * zoom, height: document.height * zoom }}>
                 <canvas
                   ref={canvasRef}
+                  className={tool === 'pipette' ? 'is-sampling' : ''}
                   style={{ width: document.width * zoom, height: document.height * zoom }}
                   aria-label={`Изображение ${document.name}`}
+                  onClick={samplePixel}
                 />
+                {pixelSample && (
+                  <span
+                    className="sample-marker"
+                    style={{
+                      left: `${(pixelSample.x + 0.5) / document.width * 100}%`,
+                      top: `${(pixelSample.y + 0.5) / document.height * 100}%`,
+                    }}
+                    aria-hidden="true"
+                  />
+                )}
               </div>
             ) : (
               <button className="empty-state" onClick={() => inputRef.current?.click()} disabled={busy}>
@@ -250,28 +355,83 @@ function App() {
         </div>
 
         <aside className="inspector">
-          <div className="inspector-heading"><Info size={16} /><h2>Сведения</h2></div>
-          {document ? (
-            <dl className="metadata">
-              <div><dt>Размер</dt><dd>{document.width} × {document.height} px</dd></div>
-              <div><dt>Глубина цвета</dt><dd>{document.colorDepth} бит</dd></div>
-              <div><dt>Формат</dt><dd>{document.format}</dd></div>
-              <div><dt>Маска</dt><dd className={document.hasMask ? 'has-mask' : ''}>{document.hasMask ? <><Check size={14} /> Есть</> : 'Нет'}</dd></div>
-              <div><dt>Размер файла</dt><dd>{displayBytes(sourceSize)}</dd></div>
-            </dl>
-          ) : (
-            <div className="inspector-empty">Откройте изображение, чтобы увидеть его параметры.</div>
-          )}
-          <div className="format-note">
-            <strong>GrayBit-7</strong>
-            <p>7 бит на яркость пикселя. Старший бит хранит двоичную маску прозрачности.</p>
+          <div className="inspector-heading">
+            <Layers3 size={16} />
+            <h2>Каналы</h2>
+            {document && <span>{enabledChannelCount}/{activeChannels.length}</span>}
           </div>
+
+          {document ? (
+            <div className="channel-list">
+              {activeChannels.map((channel) => {
+                const label = channelLabels[channel]
+                return (
+                  <button
+                    key={channel}
+                    className={`channel-card ${channels[channel] ? 'enabled' : 'disabled'}`}
+                    onClick={() => toggleChannel(channel)}
+                    aria-pressed={channels[channel]}
+                    aria-label={`${channels[channel] ? 'Выключить' : 'Включить'} канал ${label.name}`}
+                  >
+                    <ChannelThumbnail document={document} channel={channel} />
+                    <span className={`channel-badge channel-${channel}`}>{label.short}</span>
+                    <span className="channel-name">{label.name}</span>
+                    <span className="channel-visibility">{channels[channel] ? <Eye size={16} /> : <EyeOff size={16} />}</span>
+                  </button>
+                )
+              })}
+              <p className="channel-hint">Кликните по каналу, чтобы изменить его отображение на холсте.</p>
+            </div>
+          ) : (
+            <div className="inspector-empty">Откройте изображение, чтобы увидеть его цветовые каналы.</div>
+          )}
+
+          <section className={`picker-panel ${tool === 'pipette' ? 'active' : ''}`}>
+            <div className="section-heading"><Pipette size={15} /><h3>Пипетка</h3></div>
+            {!document ? (
+              <p className="panel-placeholder">Инструмент станет доступен после загрузки изображения.</p>
+            ) : !pixelSample ? (
+              <p className="panel-placeholder">{tool === 'pipette' ? 'Кликните по изображению, чтобы считать цвет.' : 'Включите инструмент в верхней панели.'}</p>
+            ) : (
+              <div className="sample-details">
+                <div className="sample-summary">
+                  <span className="color-swatch" style={{ backgroundColor: `rgb(${pixelSample.red} ${pixelSample.green} ${pixelSample.blue})` }} />
+                  <span><strong>X {pixelSample.x} · Y {pixelSample.y}</strong><small>координаты пикселя</small></span>
+                </div>
+                <div className="rgb-values">
+                  <span className="value-red"><b>R</b>{pixelSample.red}</span>
+                  <span className="value-green"><b>G</b>{pixelSample.green}</span>
+                  <span className="value-blue"><b>B</b>{pixelSample.blue}</span>
+                </div>
+                <div className="lab-values">
+                  <span>CIELAB</span>
+                  <code>L* {pixelSample.lab.l.toFixed(1)}</code>
+                  <code>a* {pixelSample.lab.a.toFixed(1)}</code>
+                  <code>b* {pixelSample.lab.b.toFixed(1)}</code>
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section className="info-panel">
+            <div className="section-heading"><Info size={15} /><h3>Сведения</h3></div>
+            {document && (
+              <dl className="metadata compact">
+                <div><dt>Размер</dt><dd>{document.width} × {document.height} px</dd></div>
+                <div><dt>Глубина</dt><dd>{document.colorDepth} бит</dd></div>
+                <div><dt>Формат</dt><dd>{document.format}</dd></div>
+                <div><dt>Маска</dt><dd className={document.hasMask ? 'has-mask' : ''}>{document.hasMask ? <><Check size={14} /> Есть</> : 'Нет'}</dd></div>
+                <div><dt>Файл</dt><dd>{displayBytes(sourceSize)}</dd></div>
+              </dl>
+            )}
+          </section>
         </aside>
       </section>
 
       <footer className="statusbar">
         <span className={`status-indicator ${document ? 'ready' : ''}`} />
-        <span>{document ? 'Готово' : 'Нет открытого файла'}</span>
+        <span>{document ? (tool === 'pipette' ? 'Пипетка активна' : 'Готово') : 'Нет открытого файла'}</span>
+        {pixelSample && <><span className="status-separator" /><span>X {pixelSample.x} · Y {pixelSample.y}</span></>}
         {document && <>
           <span className="status-separator" />
           <span>{document.width} × {document.height} px</span>
