@@ -1,13 +1,17 @@
 import type { ImageDocument } from './gb7'
 
-function readPngDepth(bytes: Uint8Array): number | null {
+function readPngMetadata(bytes: Uint8Array): { depth: number; grayscale: boolean } | null {
   if (bytes.length < 26 || bytes[0] !== 0x89 || bytes[1] !== 0x50) return null
   const bitDepth = bytes[24]
   const channels: Record<number, number> = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }
-  return bitDepth * (channels[bytes[25]] ?? 1)
+  const colorType = bytes[25]
+  return {
+    depth: bitDepth * (channels[colorType] ?? 1),
+    grayscale: colorType === 0 || colorType === 4,
+  }
 }
 
-function readJpegDepth(bytes: Uint8Array): number | null {
+function readJpegMetadata(bytes: Uint8Array): { depth: number; grayscale: boolean } | null {
   if (bytes[0] !== 0xff || bytes[1] !== 0xd8) return null
   let offset = 2
   while (offset + 9 < bytes.length) {
@@ -17,7 +21,8 @@ function readJpegDepth(bytes: Uint8Array): number | null {
     const length = (bytes[offset + 2] << 8) | bytes[offset + 3]
     if (length < 2) break
     if ([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].includes(marker)) {
-      return bytes[offset + 4] * bytes[offset + 9]
+      const components = bytes[offset + 9]
+      return { depth: bytes[offset + 4] * components, grayscale: components === 1 }
     }
     offset += 2 + length
   }
@@ -28,7 +33,8 @@ export async function decodeBrowserImage(file: File): Promise<ImageDocument> {
   const format = file.type === 'image/png' || file.name.toLowerCase().endsWith('.png') ? 'PNG' : 'JPEG'
   const buffer = await file.arrayBuffer()
   const bytes = new Uint8Array(buffer)
-  const colorDepth = format === 'PNG' ? readPngDepth(bytes) ?? 32 : readJpegDepth(bytes) ?? 24
+  const metadata = format === 'PNG' ? readPngMetadata(bytes) : readJpegMetadata(bytes)
+  const colorDepth = metadata?.depth ?? (format === 'PNG' ? 32 : 24)
   const bitmap = await createImageBitmap(new Blob([buffer], { type: file.type }))
   const canvas = document.createElement('canvas')
   canvas.width = bitmap.width
@@ -42,5 +48,9 @@ export async function decodeBrowserImage(file: File): Promise<ImageDocument> {
   for (let index = 3; index < pixels.length; index += 4) {
     if (pixels[index] < 255) { hasMask = true; break }
   }
-  return { name: file.name, format, width: canvas.width, height: canvas.height, colorDepth, hasMask, pixels }
+  const grayscale = metadata?.grayscale ?? false
+  const channelMode = grayscale
+    ? (hasMask ? 'gray-alpha' : 'gray')
+    : (hasMask ? 'rgba' : 'rgb')
+  return { name: file.name, format, width: canvas.width, height: canvas.height, colorDepth, hasMask, channelMode, pixels }
 }

@@ -8,6 +8,7 @@ export type ImageDocument = {
   height: number
   colorDepth: number
   hasMask: boolean
+  channelMode: 'gray' | 'gray-alpha' | 'rgb' | 'rgba'
   pixels: Uint8ClampedArray
 }
 
@@ -55,6 +56,7 @@ export function decodeGb7(buffer: ArrayBuffer, name = 'image.gb7'): ImageDocumen
     height,
     colorDepth: hasMask ? 8 : 7,
     hasMask,
+    channelMode: hasMask ? 'gray-alpha' : 'gray',
     pixels,
   }
 }
