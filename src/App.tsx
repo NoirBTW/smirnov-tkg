@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Check, ChevronDown, Download, Eye, EyeOff, FileImage, FolderOpen,
-  ImageIcon, Info, Layers3, Maximize2, Minus, Pipette, Plus, RotateCcw, X,
+  ImageIcon, Info, Layers3, Maximize2, Minus, Pipette, Plus, RotateCcw,
+  SlidersHorizontal, X,
 } from 'lucide-react'
+import { LevelsDialog } from './components/LevelsDialog'
 import { decodeBrowserImage } from './lib/browser-image'
 import {
   applyChannelVisibility, createChannelPreview, DEFAULT_CHANNELS,
@@ -80,13 +82,20 @@ function App() {
   const [channels, setChannels] = useState<ChannelState>({ ...DEFAULT_CHANNELS })
   const [tool, setTool] = useState<Tool>('none')
   const [pixelSample, setPixelSample] = useState<PixelSample | null>(null)
+  const [levelsOpen, setLevelsOpen] = useState(false)
+  const [levelsPreviewPixels, setLevelsPreviewPixels] = useState<Uint8ClampedArray | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
 
+  const renderDocument = useMemo(() => {
+    if (!document || !levelsPreviewPixels) return document
+    return { ...document, pixels: levelsPreviewPixels }
+  }, [document, levelsPreviewPixels])
+
   const displayedPixels = useMemo(
-    () => document ? applyChannelVisibility(document, channels) : null,
-    [channels, document],
+    () => renderDocument ? applyChannelVisibility(renderDocument, channels) : null,
+    [channels, renderDocument],
   )
 
   const activeChannels = document ? visibleChannels(document) : []
@@ -141,6 +150,8 @@ function App() {
       setChannels({ ...DEFAULT_CHANNELS })
       setPixelSample(null)
       setTool('none')
+      setLevelsOpen(false)
+      setLevelsPreviewPixels(null)
       setFitMode(true)
       setNotice({ kind: 'success', text: `${file.name} загружен` })
     } catch (error) {
@@ -204,6 +215,17 @@ function App() {
     setChannels((current) => ({ ...current, [channel]: !current[channel] }))
   }
 
+  const previewLevels = useCallback((pixels: Uint8ClampedArray | null) => {
+    setLevelsPreviewPixels(pixels)
+  }, [])
+
+  const applyLevelsResult = useCallback((pixels: Uint8ClampedArray) => {
+    setDocument((current) => current ? { ...current, pixels: new Uint8ClampedArray(pixels) } : current)
+    setLevelsPreviewPixels(null)
+    setPixelSample(null)
+    setNotice({ kind: 'success', text: 'Коррекция уровней применена' })
+  }, [])
+
   const samplePixel = (event: React.MouseEvent<HTMLCanvasElement>) => {
     if (tool !== 'pipette' || !document || event.button !== 0) return
     const canvas = event.currentTarget
@@ -230,6 +252,8 @@ function App() {
     setSourceSize(0)
     setPixelSample(null)
     setTool('none')
+    setLevelsOpen(false)
+    setLevelsPreviewPixels(null)
     setChannels({ ...DEFAULT_CHANNELS })
     setNotice(null)
   }
@@ -286,6 +310,14 @@ function App() {
               {document && <span className="format-pill">{document.format}</span>}
             </div>
             <div className="document-tools">
+              <button
+                className="tool-button"
+                onClick={() => setLevelsOpen(true)}
+                disabled={!document}
+                title="Открыть градационную коррекцию"
+              >
+                <SlidersHorizontal size={16} /> <span>Уровни</span>
+              </button>
               <button
                 className={`tool-button ${tool === 'pipette' ? 'active' : ''}`}
                 onClick={() => setTool((current) => current === 'pipette' ? 'none' : 'pipette')}
@@ -441,6 +473,14 @@ function App() {
           <span>{document.format}{document.hasMask ? ' · маска' : ''}</span>
         </>}
       </footer>
+
+      <LevelsDialog
+        document={document}
+        open={levelsOpen}
+        onPreview={previewLevels}
+        onApply={applyLevelsResult}
+        onClose={() => { setLevelsOpen(false); setLevelsPreviewPixels(null) }}
+      />
 
       {notice && (
         <div className={`toast ${notice.kind}`} role="status">
