@@ -34,6 +34,10 @@ const samples = [
   ['gradient-half-mask.gb7', 'Градиент 32 × 32'],
   ['vertical-kapibara.gb7', 'Капибара 1080 × 1920'],
   ['kapibara-mask.gb7', 'Капибара с маской 1200 × 1010'],
+  ['cat-cute.jpg', 'Котёнок · JPG 1280 × 960'],
+  ['cat-exploring.jpg', 'Котёнок · JPG 960 × 1280'],
+  ['cat-sleeping.png', 'Спящий котёнок · PNG 800 × 600'],
+  ['cat-face-openmoji.png', 'Кот · PNG с прозрачностью 618 × 618'],
 ] as const
 
 const channelLabels: Record<ChannelKey, { short: string; name: string }> = {
