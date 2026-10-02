@@ -237,13 +237,22 @@ export function FilterDialog({ document, open, onPreview, onApply, onClose }: Fi
         </header>
 
         <div className="filter-body">
-          <label className="field filter-preset">
-            <span>Предустановка</span>
-            <select value={preset} onChange={(event) => selectPreset(event.target.value as KernelPresetId)}>
-              {preset === 'custom' && <option value="custom" disabled>Пользовательское ядро</option>}
-              {KERNEL_PRESETS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-            </select>
-          </label>
+          <div className="filter-toolbar">
+            <label className="field filter-preset">
+              <span>Предустановка</span>
+              <select value={preset} onChange={(event) => selectPreset(event.target.value as KernelPresetId)}>
+                {preset === 'custom' && <option value="custom" disabled>Пользовательское ядро</option>}
+                {KERNEL_PRESETS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+              </select>
+            </label>
+
+            <label className="field edge-field">
+              <span>Обработка края</span>
+              <select value={edgeMode} onChange={(event) => setEdgeMode(event.target.value as EdgeMode)}>
+                {(Object.keys(edgeLabels) as EdgeMode[]).map((mode) => <option key={mode} value={mode}>{edgeLabels[mode]}</option>)}
+              </select>
+            </label>
+          </div>
 
           <section className="kernel-section" aria-labelledby="kernel-heading">
             <div className="kernel-heading">
@@ -270,30 +279,21 @@ export function FilterDialog({ document, open, onPreview, onApply, onClose }: Fi
             </div>
           </section>
 
-          <div className="filter-options">
-            <fieldset className="channel-fieldset">
-              <legend>Каналы</legend>
-              <div>
-                {availableChannels.map((channel) => (
-                  <label key={channel}>
-                    <input
-                      type="checkbox"
-                      checked={selectedChannels.includes(channel)}
-                      onChange={() => toggleChannel(channel)}
-                    />
-                    <span>{channelLabels[channel]}</span>
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-
-            <label className="field edge-field">
-              <span>Обработка края</span>
-              <select value={edgeMode} onChange={(event) => setEdgeMode(event.target.value as EdgeMode)}>
-                {(Object.keys(edgeLabels) as EdgeMode[]).map((mode) => <option key={mode} value={mode}>{edgeLabels[mode]}</option>)}
-              </select>
-            </label>
-          </div>
+          <fieldset className="channel-fieldset">
+            <legend>Каналы</legend>
+            <div>
+              {availableChannels.map((channel) => (
+                <label key={channel}>
+                  <input
+                    type="checkbox"
+                    checked={selectedChannels.includes(channel)}
+                    onChange={() => toggleChannel(channel)}
+                  />
+                  <span>{channelLabels[channel]}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
 
           <div className={`filter-state ${kernelError || error ? 'error' : ''}`} role="status">
             {kernelError ?? error ?? (processing ? 'Обработка изображения в Web Worker…' : preview ? 'Предпросмотр применён к холсту.' : 'Предпросмотр выключен.')}
