@@ -1,17 +1,26 @@
 import type { ImageDocument } from './gb7'
 
-function readPngMetadata(bytes: Uint8Array): { depth: number; grayscale: boolean } | null {
-  if (bytes.length < 26 || bytes[0] !== 0x89 || bytes[1] !== 0x50) return null
+export type BrowserImageMetadata = {
+  depth: number
+  grayscale: boolean
+  hasAlpha: boolean
+}
+
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+
+export function readPngMetadata(bytes: Uint8Array): BrowserImageMetadata | null {
+  if (bytes.length < 26 || !PNG_SIGNATURE.every((byte, index) => bytes[index] === byte)) return null
   const bitDepth = bytes[24]
   const channels: Record<number, number> = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }
   const colorType = bytes[25]
   return {
     depth: bitDepth * (channels[colorType] ?? 1),
     grayscale: colorType === 0 || colorType === 4,
+    hasAlpha: colorType === 4 || colorType === 6,
   }
 }
 
-function readJpegMetadata(bytes: Uint8Array): { depth: number; grayscale: boolean } | null {
+function readJpegMetadata(bytes: Uint8Array): BrowserImageMetadata | null {
   if (bytes[0] !== 0xff || bytes[1] !== 0xd8) return null
   let offset = 2
   while (offset + 9 < bytes.length) {
@@ -22,7 +31,7 @@ function readJpegMetadata(bytes: Uint8Array): { depth: number; grayscale: boolea
     if (length < 2) break
     if ([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].includes(marker)) {
       const components = bytes[offset + 9]
-      return { depth: bytes[offset + 4] * components, grayscale: components === 1 }
+      return { depth: bytes[offset + 4] * components, grayscale: components === 1, hasAlpha: false }
     }
     offset += 2 + length
   }
@@ -44,11 +53,12 @@ export async function decodeBrowserImage(file: File): Promise<ImageDocument> {
   context.drawImage(bitmap, 0, 0)
   bitmap.close()
   const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data
-  let hasMask = false
+  let containsTransparency = false
   for (let index = 3; index < pixels.length; index += 4) {
-    if (pixels[index] < 255) { hasMask = true; break }
+    if (pixels[index] < 255) { containsTransparency = true; break }
   }
   const grayscale = metadata?.grayscale ?? false
+  const hasMask = Boolean(metadata?.hasAlpha) || containsTransparency
   const channelMode = grayscale
     ? (hasMask ? 'gray-alpha' : 'gray')
     : (hasMask ? 'rgba' : 'rgb')
