@@ -217,6 +217,32 @@ canvas.is-sampling { cursor: crosshair; }
 .resize-validation.visible { color: #ff9da5; }
 .resize-footer > span { color: #727b88; font-size: .66rem; }
 
+.filter-dialog { width: min(680px, calc(100vw - 28px)); max-width: none; max-height: calc(100vh - 28px); padding: 0; overflow: hidden; border: 1px solid #3a424f; border-radius: 14px; color: #e8ebf1; background: #161a21; box-shadow: 0 30px 90px #000c; }
+.filter-dialog::backdrop { background: #080a0eb3; backdrop-filter: blur(2px); }
+.filter-dialog-shell { max-height: calc(100vh - 30px); display: flex; flex-direction: column; overflow: auto; }
+.filter-body { display: grid; gap: 16px; padding: 16px 18px; }
+.filter-preset select { width: 100%; }
+.kernel-section { display: grid; grid-template-columns: minmax(0, 1fr) 230px; align-items: center; gap: 20px; padding: 14px; border: 1px solid #303742; border-radius: 10px; background: #101319; }
+.kernel-heading { display: grid; align-self: stretch; align-content: space-between; gap: 14px; }
+.kernel-heading h3 { margin: 0; font-size: .8rem; }
+.kernel-heading p { margin: 4px 0 0; color: var(--muted); font-size: .67rem; line-height: 1.45; }
+.kernel-heading > span { color: var(--mint); font-size: .68rem; font-variant-numeric: tabular-nums; }
+.kernel-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.kernel-grid input { width: 100%; height: 43px; padding: 0 6px; border: 1px solid #343c48; border-radius: 6px; color: #e5e9ef; text-align: center; background: #171b22; font-size: .78rem; font-variant-numeric: tabular-nums; }
+.kernel-grid input:focus { border-color: #5c806f; }
+.kernel-grid input:disabled { color: #8b93a0; background: #11141a; cursor: not-allowed; opacity: .55; }
+.filter-options { display: grid; grid-template-columns: minmax(0, 1fr) minmax(210px, .8fr); align-items: end; gap: 16px; }
+.channel-fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.channel-fieldset legend { padding: 0 0 7px; color: var(--muted); font-size: .68rem; }
+.channel-fieldset > div { display: flex; flex-wrap: wrap; gap: 7px; }
+.channel-fieldset label { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 10px; border: 1px solid #343c48; border-radius: 7px; color: #cbd1da; background: #11141a; cursor: pointer; font-size: .72rem; }
+.channel-fieldset label:has(input:checked) { color: var(--mint); border-color: #426556; background: #17251f; }
+.channel-fieldset input { width: 14px; height: 14px; margin: 0; accent-color: var(--mint-strong); }
+.edge-field select { width: 100%; }
+.filter-state { min-height: 34px; display: flex; align-items: center; padding: 8px 10px; border: 1px solid #2e3841; border-radius: 7px; color: #91a099; background: #121a17; font-size: .69rem; }
+.filter-state.error { color: #ffabb1; border-color: #603b40; background: #24171a; }
+.filter-footer { position: sticky; bottom: 0; }
+
 @media (max-width: 760px) {
   body { overflow: auto; }
   .app-shell { min-height: 100vh; height: auto; grid-template-rows: auto minmax(calc(100vh - 124px), auto) 30px; }
@@ -239,6 +265,9 @@ canvas.is-sampling { cursor: crosshair; }
   .histogram-canvas { height: 180px; }
   .level-fields label { grid-template-columns: 1fr; gap: 4px; }
   .resize-dialog { width: min(590px, calc(100vw - 18px)); }
+  .filter-dialog { width: min(680px, calc(100vw - 18px)); max-height: calc(100vh - 18px); }
+  .filter-dialog-shell { max-height: calc(100vh - 20px); }
+  .kernel-section { grid-template-columns: minmax(0, 1fr) 210px; }
 }
 
 @media (max-width: 480px) {
@@ -267,6 +296,14 @@ canvas.is-sampling { cursor: crosshair; }
   .resize-footer { align-items: stretch; flex-direction: column; }
   .resize-footer .levels-actions { justify-content: stretch; }
   .resize-footer .button { flex: 1; }
+  .filter-body { padding: 12px; }
+  .kernel-section { grid-template-columns: 1fr; gap: 12px; padding: 12px; }
+  .kernel-heading { grid-template-columns: 1fr auto; align-items: end; }
+  .kernel-heading > span { text-align: right; }
+  .filter-options { grid-template-columns: 1fr; gap: 12px; }
+  .filter-footer { align-items: stretch; flex-direction: column; padding: 10px 12px; }
+  .filter-footer .levels-actions { justify-content: flex-end; }
+  .filter-footer .levels-actions .button { flex: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
