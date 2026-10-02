@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Check, ChevronDown, Download, Eye, EyeOff, FileImage, FolderOpen,
+  Check, ChevronDown, Download, Eye, EyeOff, FileImage, Filter, FolderOpen,
   ImageIcon, Info, Layers3, Maximize2, Minus, Pipette, Plus, RotateCcw,
   Scaling, SlidersHorizontal, X,
 } from 'lucide-react'
 import { LevelsDialog } from './components/LevelsDialog'
+import { FilterDialog } from './components/FilterDialog'
 import { ResizeDialog } from './components/ResizeDialog'
 import { decodeBrowserImage } from './lib/browser-image'
 import {
@@ -88,16 +89,19 @@ function App() {
   const [tool, setTool] = useState<Tool>('none')
   const [pixelSample, setPixelSample] = useState<PixelSample | null>(null)
   const [levelsOpen, setLevelsOpen] = useState(false)
+  const [filterOpen, setFilterOpen] = useState(false)
   const [resizeOpen, setResizeOpen] = useState(false)
   const [levelsPreviewPixels, setLevelsPreviewPixels] = useState<Uint8ClampedArray | null>(null)
+  const [filterPreviewPixels, setFilterPreviewPixels] = useState<Uint8ClampedArray | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
 
   const renderDocument = useMemo(() => {
-    if (!document || !levelsPreviewPixels) return document
-    return { ...document, pixels: levelsPreviewPixels }
-  }, [document, levelsPreviewPixels])
+    if (!document) return null
+    const previewPixels = levelsPreviewPixels ?? filterPreviewPixels
+    return previewPixels ? { ...document, pixels: previewPixels } : document
+  }, [document, filterPreviewPixels, levelsPreviewPixels])
 
   const displayedPixels = useMemo(
     () => renderDocument ? applyChannelVisibility(renderDocument, channels) : null,
@@ -175,8 +179,10 @@ function App() {
       setPixelSample(null)
       setTool('none')
       setLevelsOpen(false)
+      setFilterOpen(false)
       setResizeOpen(false)
       setLevelsPreviewPixels(null)
+      setFilterPreviewPixels(null)
       setViewInterpolation('bilinear')
       setFitMode(true)
       setNotice({ kind: 'success', text: `${file.name} загружен` })
@@ -250,8 +256,26 @@ function App() {
   const applyLevelsResult = useCallback((pixels: Uint8ClampedArray) => {
     setDocument((current) => current ? { ...current, pixels: new Uint8ClampedArray(pixels) } : current)
     setLevelsPreviewPixels(null)
+    setFilterPreviewPixels(null)
     setPixelSample(null)
     setNotice({ kind: 'success', text: 'Коррекция уровней применена' })
+  }, [])
+
+  const previewFilter = useCallback((pixels: Uint8ClampedArray | null) => {
+    setFilterPreviewPixels(pixels)
+  }, [])
+
+  const applyFilterResult = useCallback((pixels: Uint8ClampedArray) => {
+    setDocument((current) => current ? { ...current, pixels: new Uint8ClampedArray(pixels) } : current)
+    setFilterPreviewPixels(null)
+    setLevelsPreviewPixels(null)
+    setPixelSample(null)
+    setNotice({ kind: 'success', text: 'Фильтр применён к изображению' })
+  }, [])
+
+  const closeFilter = useCallback(() => {
+    setFilterOpen(false)
+    setFilterPreviewPixels(null)
   }, [])
 
   const applyResizeResult = useCallback((next: ImageDocument, method: InterpolationMethod) => {
@@ -259,6 +283,7 @@ function App() {
     setDocument(next)
     setViewInterpolation(method)
     setLevelsPreviewPixels(null)
+    setFilterPreviewPixels(null)
     setPixelSample(null)
     setNotice({ kind: 'success', text: `Размер изменён: ${next.width} × ${next.height} px` })
   }, [])
@@ -292,8 +317,10 @@ function App() {
     setPixelSample(null)
     setTool('none')
     setLevelsOpen(false)
+    setFilterOpen(false)
     setResizeOpen(false)
     setLevelsPreviewPixels(null)
+    setFilterPreviewPixels(null)
     setChannels({ ...DEFAULT_CHANNELS })
     setNotice(null)
   }
@@ -350,6 +377,14 @@ function App() {
               {document && <span className="format-pill">{document.format}</span>}
             </div>
             <div className="document-tools">
+              <button
+                className="tool-button"
+                onClick={() => setFilterOpen(true)}
+                disabled={!document}
+                title="Открыть фильтрацию ядром"
+              >
+                <Filter size={16} /> <span>Фильтр</span>
+              </button>
               <button
                 className="tool-button"
                 onClick={() => setResizeOpen(true)}
@@ -556,6 +591,14 @@ function App() {
         open={resizeOpen}
         onApply={applyResizeResult}
         onClose={() => setResizeOpen(false)}
+      />
+
+      <FilterDialog
+        document={document}
+        open={filterOpen}
+        onPreview={previewFilter}
+        onApply={applyFilterResult}
+        onClose={closeFilter}
       />
 
       {notice && (
