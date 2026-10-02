@@ -2,15 +2,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Check, ChevronDown, Download, Eye, EyeOff, FileImage, FolderOpen,
   ImageIcon, Info, Layers3, Maximize2, Minus, Pipette, Plus, RotateCcw,
-  SlidersHorizontal, X,
+  Scaling, SlidersHorizontal, X,
 } from 'lucide-react'
 import { LevelsDialog } from './components/LevelsDialog'
+import { ResizeDialog } from './components/ResizeDialog'
 import { decodeBrowserImage } from './lib/browser-image'
 import {
   applyChannelVisibility, createChannelPreview, DEFAULT_CHANNELS,
   rgbToLab, visibleChannels, type ChannelKey, type ChannelState, type LabColor,
 } from './lib/color'
 import { decodeGb7, encodeGb7, type ImageDocument } from './lib/gb7'
+import {
+  interpolationAlgorithms, resizePixels, type InterpolationMethod,
+} from './lib/resampling'
 
 type ExportFormat = 'png' | 'jpg' | 'gb7'
 type Notice = { kind: 'error' | 'success'; text: string }
@@ -72,7 +76,8 @@ function ChannelThumbnail({ document, channel }: { document: ImageDocument; chan
 function App() {
   const [document, setDocument] = useState<ImageDocument | null>(null)
   const [sourceSize, setSourceSize] = useState(0)
-  const [zoom, setZoom] = useState(1)
+  const [zoom, setZoom] = useState(100)
+  const [viewInterpolation, setViewInterpolation] = useState<InterpolationMethod>('bilinear')
   const [fitMode, setFitMode] = useState(true)
   const [format, setFormat] = useState<ExportFormat>('gb7')
   const [dragging, setDragging] = useState(false)
@@ -83,6 +88,7 @@ function App() {
   const [tool, setTool] = useState<Tool>('none')
   const [pixelSample, setPixelSample] = useState<PixelSample | null>(null)
   const [levelsOpen, setLevelsOpen] = useState(false)
+  const [resizeOpen, setResizeOpen] = useState(false)
   const [levelsPreviewPixels, setLevelsPreviewPixels] = useState<Uint8ClampedArray | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -98,26 +104,44 @@ function App() {
     [channels, renderDocument],
   )
 
+  const displaySize = useMemo(() => document ? {
+    width: Math.max(1, Math.round(document.width * zoom / 100)),
+    height: Math.max(1, Math.round(document.height * zoom / 100)),
+  } : { width: 0, height: 0 }, [document, zoom])
+
+  const scaledPixels = useMemo(() => {
+    if (!document || !displayedPixels) return null
+    return resizePixels(
+      displayedPixels,
+      document.width,
+      document.height,
+      displaySize.width,
+      displaySize.height,
+      viewInterpolation,
+    )
+  }, [displaySize.height, displaySize.width, displayedPixels, document, viewInterpolation])
+
   const activeChannels = document ? visibleChannels(document) : []
   const enabledChannelCount = activeChannels.filter((channel) => channels[channel]).length
 
   const fitImage = useCallback(() => {
     if (!document || !viewportRef.current) return
     const box = viewportRef.current.getBoundingClientRect()
-    const availableWidth = Math.max(120, box.width - 72)
-    const availableHeight = Math.max(120, box.height - 72)
-    setZoom(Math.min(1, availableWidth / document.width, availableHeight / document.height))
+    const availableWidth = Math.max(1, box.width - 100)
+    const availableHeight = Math.max(1, box.height - 100)
+    const fitted = Math.min(availableWidth / document.width, availableHeight / document.height) * 100
+    setZoom(Math.min(300, Math.max(12, Math.floor(fitted))))
   }, [document])
 
   useEffect(() => {
-    if (!document || !displayedPixels || !canvasRef.current) return
+    if (!document || !scaledPixels || !canvasRef.current) return
     const canvas = canvasRef.current
-    canvas.width = document.width
-    canvas.height = document.height
+    canvas.width = displaySize.width
+    canvas.height = displaySize.height
     canvas.getContext('2d')?.putImageData(
-      new ImageData(new Uint8ClampedArray(displayedPixels), document.width, document.height), 0, 0,
+      new ImageData(new Uint8ClampedArray(scaledPixels), displaySize.width, displaySize.height), 0, 0,
     )
-  }, [displayedPixels, document])
+  }, [displaySize.height, displaySize.width, document, scaledPixels])
 
   useEffect(() => {
     if (!fitMode) return
@@ -151,7 +175,9 @@ function App() {
       setPixelSample(null)
       setTool('none')
       setLevelsOpen(false)
+      setResizeOpen(false)
       setLevelsPreviewPixels(null)
+      setViewInterpolation('bilinear')
       setFitMode(true)
       setNotice({ kind: 'success', text: `${file.name} загружен` })
     } catch (error) {
@@ -191,8 +217,10 @@ function App() {
       if (format === 'gb7') {
         downloadBlob(new Blob([encodeGb7(document)], { type: 'application/octet-stream' }), `${baseName(document.name)}.gb7`)
       } else {
-        const canvas = canvasRef.current
-        if (!canvas) throw new Error('Холст недоступен')
+        const canvas = window.document.createElement('canvas')
+        canvas.width = document.width
+        canvas.height = document.height
+        canvas.getContext('2d')?.putImageData(new ImageData(new Uint8ClampedArray(document.pixels), document.width, document.height), 0, 0)
         const mime = format === 'png' ? 'image/png' : 'image/jpeg'
         const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, mime, 0.92))
         if (!blob) throw new Error('Браузер не смог сформировать файл')
@@ -208,7 +236,7 @@ function App() {
 
   const changeZoom = (next: number) => {
     setFitMode(false)
-    setZoom(Math.min(4, Math.max(0.05, next)))
+    setZoom(Math.min(300, Math.max(12, Math.round(next))))
   }
 
   const toggleChannel = (channel: ChannelKey) => {
@@ -226,12 +254,23 @@ function App() {
     setNotice({ kind: 'success', text: 'Коррекция уровней применена' })
   }, [])
 
+  const applyResizeResult = useCallback((next: ImageDocument, method: InterpolationMethod) => {
+    setFitMode(false)
+    setDocument(next)
+    setViewInterpolation(method)
+    setLevelsPreviewPixels(null)
+    setPixelSample(null)
+    setNotice({ kind: 'success', text: `Размер изменён: ${next.width} × ${next.height} px` })
+  }, [])
+
   const samplePixel = (event: React.MouseEvent<HTMLCanvasElement>) => {
     if (tool !== 'pipette' || !document || event.button !== 0) return
     const canvas = event.currentTarget
     const rect = canvas.getBoundingClientRect()
-    const x = Math.min(document.width - 1, Math.max(0, Math.floor((event.clientX - rect.left) * canvas.width / rect.width)))
-    const y = Math.min(document.height - 1, Math.max(0, Math.floor((event.clientY - rect.top) * canvas.height / rect.height)))
+    const displayX = (event.clientX - rect.left) * canvas.width / rect.width
+    const displayY = (event.clientY - rect.top) * canvas.height / rect.height
+    const x = Math.min(document.width - 1, Math.max(0, Math.floor(displayX * document.width / canvas.width)))
+    const y = Math.min(document.height - 1, Math.max(0, Math.floor(displayY * document.height / canvas.height)))
     const offset = (y * document.width + x) * 4
     const red = document.pixels[offset]
     const green = document.pixels[offset + 1]
@@ -253,6 +292,7 @@ function App() {
     setPixelSample(null)
     setTool('none')
     setLevelsOpen(false)
+    setResizeOpen(false)
     setLevelsPreviewPixels(null)
     setChannels({ ...DEFAULT_CHANNELS })
     setNotice(null)
@@ -312,6 +352,14 @@ function App() {
             <div className="document-tools">
               <button
                 className="tool-button"
+                onClick={() => setResizeOpen(true)}
+                disabled={!document}
+                title="Изменить размер изображения"
+              >
+                <Scaling size={16} /> <span>Размер</span>
+              </button>
+              <button
+                className="tool-button"
                 onClick={() => setLevelsOpen(true)}
                 disabled={!document}
                 title="Открыть градационную коррекцию"
@@ -346,11 +394,12 @@ function App() {
             }}
           >
             {document ? (
-              <div className="canvas-stage" style={{ width: document.width * zoom, height: document.height * zoom }}>
+              <div className="canvas-stage" style={{ width: displaySize.width, height: displaySize.height }}>
                 <canvas
                   ref={canvasRef}
                   className={tool === 'pipette' ? 'is-sampling' : ''}
-                  style={{ width: document.width * zoom, height: document.height * zoom }}
+                  width={displaySize.width}
+                  height={displaySize.height}
                   aria-label={`Изображение ${document.name}`}
                   onClick={samplePixel}
                 />
@@ -377,12 +426,12 @@ function App() {
           </div>
 
           <div className="zoom-bar">
-            <button className="icon-button" onClick={() => changeZoom(zoom / 1.25)} disabled={!document} title="Уменьшить"><Minus size={17} /></button>
-            <span className="zoom-value">{Math.round(zoom * 100)}%</span>
-            <button className="icon-button" onClick={() => changeZoom(zoom * 1.25)} disabled={!document} title="Увеличить"><Plus size={17} /></button>
+            <button className="icon-button" onClick={() => changeZoom(zoom - 10)} disabled={!document || zoom <= 12} title="Уменьшить"><Minus size={17} /></button>
+            <span className="zoom-value">{zoom}%</span>
+            <button className="icon-button" onClick={() => changeZoom(zoom + 10)} disabled={!document || zoom >= 300} title="Увеличить"><Plus size={17} /></button>
             <span className="toolbar-separator" />
             <button className={`text-button ${fitMode ? 'active' : ''}`} onClick={() => { setFitMode(true); fitImage() }} disabled={!document}><Maximize2 size={15} /> По размеру</button>
-            <button className="text-button" onClick={() => changeZoom(1)} disabled={!document}><RotateCcw size={15} /> 100%</button>
+            <button className="text-button" onClick={() => changeZoom(100)} disabled={!document}><RotateCcw size={15} /> 100%</button>
           </div>
         </div>
 
@@ -448,13 +497,33 @@ function App() {
           <section className="info-panel">
             <div className="section-heading"><Info size={15} /><h3>Сведения</h3></div>
             {document && (
-              <dl className="metadata compact">
-                <div><dt>Размер</dt><dd>{document.width} × {document.height} px</dd></div>
-                <div><dt>Глубина</dt><dd>{document.colorDepth} бит</dd></div>
-                <div><dt>Формат</dt><dd>{document.format}</dd></div>
-                <div><dt>Маска</dt><dd className={document.hasMask ? 'has-mask' : ''}>{document.hasMask ? <><Check size={14} /> Есть</> : 'Нет'}</dd></div>
-                <div><dt>Файл</dt><dd>{displayBytes(sourceSize)}</dd></div>
-              </dl>
+              <>
+                <div className="view-scale-control">
+                  <label htmlFor="view-scale"><span>Масштаб просмотра</span><output htmlFor="view-scale">{zoom}%</output></label>
+                  <input
+                    id="view-scale"
+                    type="range"
+                    min="12"
+                    max="300"
+                    value={zoom}
+                    onChange={(event) => changeZoom(Number(event.target.value))}
+                  />
+                  <label className="view-algorithm">
+                    <span>Интерполяция</span>
+                    <select value={viewInterpolation} onChange={(event) => setViewInterpolation(event.target.value as InterpolationMethod)}>
+                      {Object.values(interpolationAlgorithms).map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <dl className="metadata compact">
+                  <div><dt>Размер</dt><dd>{document.width} × {document.height} px</dd></div>
+                  <div><dt>На холсте</dt><dd>{displaySize.width} × {displaySize.height} px</dd></div>
+                  <div><dt>Глубина</dt><dd>{document.colorDepth} бит</dd></div>
+                  <div><dt>Формат</dt><dd>{document.format}</dd></div>
+                  <div><dt>Маска</dt><dd className={document.hasMask ? 'has-mask' : ''}>{document.hasMask ? <><Check size={14} /> Есть</> : 'Нет'}</dd></div>
+                  <div><dt>Файл</dt><dd>{displayBytes(sourceSize)}</dd></div>
+                </dl>
+              </>
             )}
           </section>
         </aside>
@@ -480,6 +549,13 @@ function App() {
         onPreview={previewLevels}
         onApply={applyLevelsResult}
         onClose={() => { setLevelsOpen(false); setLevelsPreviewPixels(null) }}
+      />
+
+      <ResizeDialog
+        document={document}
+        open={resizeOpen}
+        onApply={applyResizeResult}
+        onClose={() => setResizeOpen(false)}
       />
 
       {notice && (
