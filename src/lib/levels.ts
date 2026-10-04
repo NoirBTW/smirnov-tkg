@@ -58,10 +58,11 @@ export function relativeLuminance(red: number, green: number, blue: number) {
 export function buildHistogram(document: ImageDocument, channel: LevelsChannel): Histogram {
   const domainMax = levelDomainMax(document, channel)
   const bins = new Uint32Array(domainMax + 1)
+  const grayscale = document.channelMode === 'gray' || document.channelMode === 'gray-alpha'
 
   for (let index = 0; index < document.pixels.length; index += 4) {
     let normalized: number
-    if (channel === 'master') {
+    if (channel === 'master' && !grayscale) {
       normalized = relativeLuminance(
         document.pixels[index],
         document.pixels[index + 1],

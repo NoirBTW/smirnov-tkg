@@ -109,6 +109,7 @@ function HistogramCanvas({ histogram, scale, channel }: {
 }
 
 type Marker = 'black' | 'gamma' | 'white'
+const MARKER_INSET = 9
 
 function LevelsTrack({ value, maximum, onChange }: {
   value: LevelSettings
@@ -134,7 +135,13 @@ function LevelsTrack({ value, maximum, onChange }: {
   const valueFromPointer = (clientX: number) => {
     const rect = ref.current?.getBoundingClientRect()
     if (!rect) return 0
-    return (clientX - rect.left) / rect.width * maximum
+    const usableWidth = Math.max(1, rect.width - MARKER_INSET * 2)
+    return (clientX - rect.left - MARKER_INSET) / usableWidth * maximum
+  }
+
+  const markerPosition = (position: number) => {
+    const ratio = Math.min(1, Math.max(0, position / maximum))
+    return `calc(${MARKER_INSET}px + ${ratio * 100}% - ${ratio * MARKER_INSET * 2}px)`
   }
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -172,18 +179,22 @@ function LevelsTrack({ value, maximum, onChange }: {
       <button
         type="button"
         className="level-marker marker-black"
-        style={{ left: `${value.black / maximum * 100}%` }}
+        style={{ left: markerPosition(value.black) }}
         role="slider"
         aria-label="Точка чёрного"
         aria-valuemin={0}
         aria-valuemax={value.white - 1}
         aria-valuenow={value.black}
         onKeyDown={(event) => handleKey('black', event)}
-      />
+      >
+        <svg className="endpoint-marker-icon" viewBox="0 0 18 18" aria-hidden="true">
+          <path d="M9 1 17 17H1Z" />
+        </svg>
+      </button>
       <button
         type="button"
         className="level-marker marker-gamma"
-        style={{ left: `${gammaPosition / maximum * 100}%` }}
+        style={{ left: markerPosition(gammaPosition) }}
         role="slider"
         aria-label="Гамма"
         aria-valuemin={0.1}
@@ -194,14 +205,18 @@ function LevelsTrack({ value, maximum, onChange }: {
       <button
         type="button"
         className="level-marker marker-white"
-        style={{ left: `${value.white / maximum * 100}%` }}
+        style={{ left: markerPosition(value.white) }}
         role="slider"
         aria-label="Точка белого"
         aria-valuemin={value.black + 1}
         aria-valuemax={maximum}
         aria-valuenow={value.white}
         onKeyDown={(event) => handleKey('white', event)}
-      />
+      >
+        <svg className="endpoint-marker-icon" viewBox="0 0 18 18" aria-hidden="true">
+          <path d="M9 1 17 17H1Z" />
+        </svg>
+      </button>
     </div>
   )
 }

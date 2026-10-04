@@ -168,12 +168,14 @@ canvas.is-sampling { cursor: crosshair; }
 .input-levels-heading h3 { margin: 0; font-size: .78rem; font-weight: 600; }
 .input-levels-heading span { color: var(--muted); font-size: .67rem; font-variant-numeric: tabular-nums; }
 .levels-track { position: relative; height: 43px; margin: 12px 8px 5px; touch-action: none; user-select: none; cursor: crosshair; }
-.levels-track-gradient { position: absolute; inset: 0 0 auto; height: 11px; border: 1px solid #565f6b; border-radius: 2px; background: linear-gradient(90deg, #000, #fff); box-shadow: inset 0 1px 2px #0008; }
+.levels-track-gradient { position: absolute; inset: 0 9px auto; height: 11px; border: 1px solid #565f6b; border-radius: 2px; background: linear-gradient(90deg, #000, #fff); box-shadow: inset 0 1px 2px #0008; }
 .level-marker { position: absolute; top: 15px; width: 18px; height: 18px; margin: 0; padding: 0; border: 1px solid #0b0d11; transform: translateX(-50%); cursor: ew-resize; }
 .level-marker:focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
-.marker-black, .marker-white { clip-path: polygon(50% 0, 100% 100%, 0 100%); }
-.marker-black { background: #15181d; filter: drop-shadow(0 0 1px #fff); }
-.marker-white { background: #f3f4f6; filter: drop-shadow(0 0 1px #000); }
+.marker-black, .marker-white { border: 0; background: transparent; filter: drop-shadow(0 2px 2px #000b); }
+.endpoint-marker-icon { width: 100%; height: 100%; display: block; overflow: visible; pointer-events: none; }
+.endpoint-marker-icon path { stroke-width: 2; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.marker-black .endpoint-marker-icon path { fill: #050608; stroke: #f7f9fc; }
+.marker-white .endpoint-marker-icon path { fill: #f7f9fc; stroke: #050608; }
 .marker-gamma { top: 17px; width: 14px; height: 14px; border-radius: 2px; background: #8f98a6; transform: translateX(-50%) rotate(45deg); box-shadow: 0 0 0 1px #dde1e6, 0 2px 5px #0008; }
 .level-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
 .level-fields label { display: grid; grid-template-columns: 1fr 64px; align-items: center; gap: 6px; }

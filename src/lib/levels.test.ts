@@ -16,6 +16,22 @@ const rgbDocument: ImageDocument = {
   pixels: new Uint8ClampedArray([0, 128, 255, 255, 255, 0, 0, 255]),
 }
 
+const gb7Document: ImageDocument = {
+  name: 'levels.gb7',
+  format: 'GB7',
+  width: 4,
+  height: 1,
+  colorDepth: 7,
+  hasMask: false,
+  channelMode: 'gray',
+  pixels: new Uint8ClampedArray([
+    0, 0, 0, 255,
+    64, 64, 64, 255,
+    128, 128, 128, 255,
+    255, 255, 255, 255,
+  ]),
+}
+
 describe('histogram', () => {
   it('uses linear sRGB relative luminance for the composite channel', () => {
     expect(relativeLuminance(255, 255, 255)).toBeCloseTo(1, 6)
@@ -28,6 +44,14 @@ describe('histogram', () => {
     expect(histogram.bins[0]).toBe(1)
     expect(histogram.bins[255]).toBe(1)
     expect(histogram.pixelCount).toBe(2)
+  })
+
+  it('builds identical Master and Gray histograms for GB7', () => {
+    const master = buildHistogram(gb7Document, 'master')
+    const gray = buildHistogram(gb7Document, 'gray')
+
+    expect(master.domainMax).toBe(127)
+    expect(Array.from(master.bins)).toEqual(Array.from(gray.bins))
   })
 })
 
